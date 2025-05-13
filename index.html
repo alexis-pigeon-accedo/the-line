@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cached Colorful Lines (2s Draw Time)</title>
+    <title>Fading Colorful Lines (2s Draw Time)</title>
     <style>
         body {
             margin: 0;
@@ -30,14 +30,16 @@
         // Animation parameters
         const segmentsPerCurve = 75; // Number of segments to approximate each Bezier curve
         const totalSegmentsPerLine = segmentsPerCurve * 2;
-        const targetDrawTimeSeconds = 2.0; // Target time to draw one full line (changed from 0.1)
+        const targetDrawTimeSeconds = 2.0; 
         const estimatedFramesPerSecond = 60;
-        // Speed: segments to draw per frame to achieve targetDrawTimeSeconds
         const animationSpeed = totalSegmentsPerLine / (targetDrawTimeSeconds * estimatedFramesPerSecond); 
-        const lineBorderWidth = 4; // Total width increase for the border (2px on each side)
+        const lineBorderWidth = 4; 
+
+        const FADE_OUT_DURATION_SECONDS = 10.0; // How long a line takes to fade completely
+        const FADE_SPEED = 1.0 / (FADE_OUT_DURATION_SECONDS * estimatedFramesPerSecond);
 
         let allLines = []; // Array to store all line objects
-        // Each line object: { controlPoints: [...], discretePoints: [...], isFullyDrawn: false, animationProgress: 0, cachedImage: null }
+        // Each line object: { discretePoints: [...], isFullyDrawn: false, animationProgress: 0, opacity: 1.0 }
 
         // Canvas dimensions
         let w, h;
@@ -135,62 +137,15 @@
             const discretePoints = calculateDiscretePathPoints(controlPoints);
             if (discretePoints.length > 0) {
                  allLines.push({
-                    controlPoints: controlPoints,
+                    // controlPoints: controlPoints, // Not strictly needed anymore after discrete points are made
                     discretePoints: discretePoints,
                     isFullyDrawn: false,
                     animationProgress: 0,
-                    cachedImage: null // Initialize cachedImage
+                    opacity: 1.0 
                 });
             } else {
                 console.error("Failed to generate points for a new line.");
             }
-        }
-
-        /**
-         * Renders a fully drawn line to an off-screen canvas and stores it.
-         * @param {object} line - The line object to cache.
-         */
-        function cacheLine(line) {
-            if (!line || !line.discretePoints || line.discretePoints.length === 0) return;
-
-            const offScreenCanvas = document.createElement('canvas');
-            offScreenCanvas.width = w; // Use current main canvas dimensions
-            offScreenCanvas.height = h;
-            const offScreenCtx = offScreenCanvas.getContext('2d');
-
-            // Common line properties
-            offScreenCtx.lineCap = 'round';
-            offScreenCtx.lineJoin = 'round';
-            const baseLineWidth = Math.max(6, Math.min(20, Math.min(w, h) * 0.02));
-
-            // 1. Draw the black border
-            offScreenCtx.strokeStyle = 'black';
-            offScreenCtx.lineWidth = baseLineWidth + lineBorderWidth;
-            offScreenCtx.beginPath();
-            offScreenCtx.moveTo(line.discretePoints[0].x, line.discretePoints[0].y);
-            for (let i = 1; i < line.discretePoints.length; i++) {
-                offScreenCtx.lineTo(line.discretePoints[i].x, line.discretePoints[i].y);
-            }
-            offScreenCtx.stroke();
-
-            // 2. Draw the colorful line on top
-            const gradient = offScreenCtx.createLinearGradient(w * 0.05, h / 2, w * 0.95, h / 2);
-            gradient.addColorStop(0.0, '#FFC400');    // Yellow-Orange
-            gradient.addColorStop(0.25, '#FF9100');   // Orange
-            gradient.addColorStop(0.5, '#FF1744');    // Deep Pink/Red
-            gradient.addColorStop(0.75, '#AA00FF');   // Purple
-            gradient.addColorStop(1.0, '#2979FF');    // Blue
-            offScreenCtx.strokeStyle = gradient;
-            offScreenCtx.lineWidth = baseLineWidth;
-            
-            offScreenCtx.beginPath();
-            offScreenCtx.moveTo(line.discretePoints[0].x, line.discretePoints[0].y);
-            for (let i = 1; i < line.discretePoints.length; i++) {
-                offScreenCtx.lineTo(line.discretePoints[i].x, line.discretePoints[i].y);
-            }
-            offScreenCtx.stroke();
-
-            line.cachedImage = offScreenCanvas; // Store the cached canvas
         }
 
         /**
@@ -200,56 +155,53 @@
             ctx.clearRect(0, 0, w, h); // Clear main canvas
 
             allLines.forEach(line => {
-                if (line.isFullyDrawn && line.cachedImage) {
-                    // Draw the pre-rendered cached image
-                    ctx.drawImage(line.cachedImage, 0, 0);
-                } else if (!line.isFullyDrawn && line.discretePoints && line.discretePoints.length > 0) {
-                    // This is the actively animating line, draw it segment by segment
-                    const segmentsToDraw = Math.floor(line.animationProgress);
-                    
-                    // Common line properties
-                    ctx.lineCap = 'round';
-                    ctx.lineJoin = 'round';
-                    const baseLineWidth = Math.max(6, Math.min(20, Math.min(w, h) * 0.02));
-
-                    if (segmentsToDraw === 0 && line.animationProgress < 1 && line.animationProgress > 0) {
-                        // If animation just started (progress > 0 but not enough for a full segment),
-                        // we might still want to draw a tiny bit for the border to appear immediately.
-                        // However, the current logic draws full segments, so this check might be more
-                        // complex than needed if we only draw full segments.
-                        // For now, this condition prevents drawing a single dot if no full segment is ready.
-                    } else if (segmentsToDraw === 0 && line.animationProgress === 0) {
-                        return; // Don't draw if animation hasn't even started for this line.
-                    }
-
-
-                    // 1. Draw the black border for the animating line
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = baseLineWidth + lineBorderWidth;
-                    ctx.beginPath();
-                    ctx.moveTo(line.discretePoints[0].x, line.discretePoints[0].y);
-                    for (let i = 1; i <= segmentsToDraw && i < line.discretePoints.length; i++) {
-                        ctx.lineTo(line.discretePoints[i].x, line.discretePoints[i].y);
-                    }
-                    ctx.stroke();
-
-                    // 2. Draw the colorful line on top for the animating line
-                    const gradient = ctx.createLinearGradient(w * 0.05, h / 2, w * 0.95, h / 2);
-                    gradient.addColorStop(0.0, '#FFC400');
-                    gradient.addColorStop(0.25, '#FF9100');
-                    gradient.addColorStop(0.5, '#FF1744');
-                    gradient.addColorStop(0.75, '#AA00FF');
-                    gradient.addColorStop(1.0, '#2979FF');
-                    ctx.strokeStyle = gradient;
-                    ctx.lineWidth = baseLineWidth;
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(line.discretePoints[0].x, line.discretePoints[0].y);
-                    for (let i = 1; i <= segmentsToDraw && i < line.discretePoints.length; i++) {
-                        ctx.lineTo(line.discretePoints[i].x, line.discretePoints[i].y);
-                    }
-                    ctx.stroke();
+                if (!line.discretePoints || line.discretePoints.length === 0 || line.opacity <= 0.001) {
+                    return; // Skip if no points or fully transparent
                 }
+
+                ctx.globalAlpha = line.opacity; // Set opacity for this line
+
+                const segmentsToDraw = line.isFullyDrawn ? line.discretePoints.length -1 : Math.floor(line.animationProgress);
+                
+                // Common line properties
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                const baseLineWidth = Math.max(6, Math.min(20, Math.min(w, h) * 0.02));
+
+                // Condition to prevent drawing a single dot for a brand new line before it starts animating
+                if (segmentsToDraw === 0 && line.animationProgress === 0 && !line.isFullyDrawn) {
+                     ctx.globalAlpha = 1.0; // Reset alpha before returning
+                     return;
+                }
+
+                // 1. Draw the black border
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = baseLineWidth + lineBorderWidth;
+                ctx.beginPath();
+                ctx.moveTo(line.discretePoints[0].x, line.discretePoints[0].y);
+                for (let i = 1; i <= segmentsToDraw && i < line.discretePoints.length; i++) {
+                    ctx.lineTo(line.discretePoints[i].x, line.discretePoints[i].y);
+                }
+                ctx.stroke();
+
+                // 2. Draw the colorful line on top
+                const gradient = ctx.createLinearGradient(w * 0.05, h / 2, w * 0.95, h / 2);
+                gradient.addColorStop(0.0, '#FFC400');    // Yellow-Orange
+                gradient.addColorStop(0.25, '#FF9100');   // Orange
+                gradient.addColorStop(0.5, '#FF1744');    // Deep Pink/Red
+                gradient.addColorStop(0.75, '#AA00FF');   // Purple
+                gradient.addColorStop(1.0, '#2979FF');    // Blue
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = baseLineWidth;
+                
+                ctx.beginPath(); 
+                ctx.moveTo(line.discretePoints[0].x, line.discretePoints[0].y);
+                for (let i = 1; i <= segmentsToDraw && i < line.discretePoints.length; i++) {
+                    ctx.lineTo(line.discretePoints[i].x, line.discretePoints[i].y);
+                }
+                ctx.stroke();
+
+                ctx.globalAlpha = 1.0; // Reset globalAlpha for the next line or drawing operation
             });
         }
 
@@ -257,22 +209,37 @@
          * Animation loop.
          */
         function animate() {
+            let currentlyDrawingLine = null;
             if (allLines.length > 0) {
-                const currentLine = allLines[allLines.length - 1]; 
+                currentlyDrawingLine = allLines[allLines.length - 1]; 
 
-                if (!currentLine.isFullyDrawn) {
-                    currentLine.animationProgress += animationSpeed;
+                if (!currentlyDrawingLine.isFullyDrawn) {
+                    currentlyDrawingLine.animationProgress += animationSpeed;
 
-                    if (currentLine.animationProgress >= totalSegmentsPerLine) {
-                        currentLine.animationProgress = totalSegmentsPerLine; // Cap it
-                        currentLine.isFullyDrawn = true;
-                        cacheLine(currentLine); // Cache the line now that it's fully drawn
-                        startNewLine(); // Start a new line
+                    if (currentlyDrawingLine.animationProgress >= totalSegmentsPerLine) {
+                        currentlyDrawingLine.animationProgress = totalSegmentsPerLine; 
+                        currentlyDrawingLine.isFullyDrawn = true;
+                        // The line that just finished drawing will start fading from the next frame.
+                        startNewLine(); 
                     }
                 }
             } else {
-                startNewLine(); // Ensure there's always a line to animate if array is empty
+                startNewLine(); 
             }
+
+            // Fade and remove lines
+            allLines = allLines.filter(line => {
+                if (line.isFullyDrawn) {
+                    // A line should fade if it's fully drawn, UNLESS it's the 'currentlyDrawingLine' 
+                    // AND that currentlyDrawingLine is NOT YET marked as fully drawn (i.e., it's still in the process of drawing its path).
+                    let isTheOneActivelyDrawingItsPath = (line === currentlyDrawingLine && !currentlyDrawingLine.isFullyDrawn);
+                    
+                    if (!isTheOneActivelyDrawingItsPath) {
+                       line.opacity -= FADE_SPEED;
+                    }
+                }
+                return line.opacity > 0.001; // Keep line if opacity is still significant
+            });
 
             draw();
             requestAnimationFrame(animate);
@@ -283,7 +250,7 @@
          */
         function handleResize() {
             setCanvasSize();
-            allLines = []; // Clear all existing lines (and their caches)
+            allLines = []; 
             startNewLine(); 
             if (allLines.length > 0 && allLines[0].discretePoints.length > 0) {
                 draw(); 
