@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Persistent Randomized Colorful Lines</title>
+    <title>Persistent Randomized Colorful Lines with Border</title>
     <style>
         body {
             margin: 0;
@@ -31,6 +31,7 @@
         const segmentsPerCurve = 75; // Number of segments to approximate each Bezier curve
         const animationSpeed = 0.5;  // How many segments' worth of progress to add per frame (0.5 for half speed)
         const totalSegmentsPerLine = segmentsPerCurve * 2;
+        const lineBorderWidth = 4; // Total width increase for the border (2px on each side)
 
         let allLines = []; // Array to store all line objects
         // Each line object: { controlPoints: [...], discretePoints: [...], isFullyDrawn: false, animationProgress: 0 }
@@ -187,28 +188,49 @@
         function draw() {
             ctx.clearRect(0, 0, w, h); // Clear canvas
 
-            // Gradient from left (blue-ish) to right (yellow-ish)
-            const gradient = ctx.createLinearGradient(w * 0.05, h / 2, w * 0.95, h / 2);
-            gradient.addColorStop(0.0, '#2979FF');    // Blue
-            gradient.addColorStop(0.25, '#AA00FF');   // Purple
-            gradient.addColorStop(0.5, '#FF1744');    // Deep Pink/Red
-            gradient.addColorStop(0.75, '#FF9100');   // Orange
-            gradient.addColorStop(1.0, '#FFC400');    // Yellow-Orange
-
-            ctx.strokeStyle = gradient;
-            ctx.lineWidth = Math.max(6, Math.min(20, Math.min(w, h) * 0.02));
+            // Common line properties
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
+            
+            const baseLineWidth = Math.max(6, Math.min(20, Math.min(w, h) * 0.02));
 
             allLines.forEach(line => {
                 if (line.discretePoints && line.discretePoints.length > 0) {
+                    const segmentsToDraw = Math.floor(line.animationProgress);
+                    if (segmentsToDraw === 0 && line.discretePoints.length > 0 && !line.isFullyDrawn && line.animationProgress < 1) {
+                        // Don't draw if no segments are ready yet for an animating line, unless it's just starting
+                        // This prevents drawing a single dot for the border before the line appears
+                        if (line.animationProgress > 0) {
+                             // Draw a tiny start for the border if animation just began
+                        } else {
+                            return;
+                        }
+                    }
+
+
+                    // 1. Draw the black border
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = baseLineWidth + lineBorderWidth; // Make border thicker
                     ctx.beginPath();
                     ctx.moveTo(line.discretePoints[0].x, line.discretePoints[0].y);
+                    for (let i = 1; i <= segmentsToDraw && i < line.discretePoints.length; i++) {
+                        ctx.lineTo(line.discretePoints[i].x, line.discretePoints[i].y);
+                    }
+                    ctx.stroke();
 
-                    // Determine how many segments of this line to draw
-                    // animationProgress is number of segments, discretePoints has totalSegments + 1 points
-                    const segmentsToDraw = Math.floor(line.animationProgress);
+                    // 2. Draw the colorful line on top
+                    // Gradient from left (blue-ish) to right (yellow-ish)
+                    const gradient = ctx.createLinearGradient(w * 0.05, h / 2, w * 0.95, h / 2);
+                    gradient.addColorStop(0.0, '#2979FF');    // Blue
+                    gradient.addColorStop(0.25, '#AA00FF');   // Purple
+                    gradient.addColorStop(0.5, '#FF1744');    // Deep Pink/Red
+                    gradient.addColorStop(0.75, '#FF9100');   // Orange
+                    gradient.addColorStop(1.0, '#FFC400');    // Yellow-Orange
+                    ctx.strokeStyle = gradient;
+                    ctx.lineWidth = baseLineWidth; // Original thickness
                     
+                    ctx.beginPath(); // Start a new path for the colored line
+                    ctx.moveTo(line.discretePoints[0].x, line.discretePoints[0].y);
                     for (let i = 1; i <= segmentsToDraw && i < line.discretePoints.length; i++) {
                         ctx.lineTo(line.discretePoints[i].x, line.discretePoints[i].y);
                     }
