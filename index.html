@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Persistent Randomized Colorful Lines with Border</title>
+    <title>Persistent Randomized Colorful Lines with Border (Inverted Colors)</title>
     <style>
         body {
             margin: 0;
@@ -219,13 +219,13 @@
                     ctx.stroke();
 
                     // 2. Draw the colorful line on top
-                    // Gradient from left (blue-ish) to right (yellow-ish)
+                    // Gradient from left (NOW YELLOW-ISH) to right (NOW BLUE-ISH)
                     const gradient = ctx.createLinearGradient(w * 0.05, h / 2, w * 0.95, h / 2);
-                    gradient.addColorStop(0.0, '#2979FF');    // Blue
-                    gradient.addColorStop(0.25, '#AA00FF');   // Purple
+                    gradient.addColorStop(0.0, '#FFC400');    // Yellow-Orange
+                    gradient.addColorStop(0.25, '#FF9100');   // Orange
                     gradient.addColorStop(0.5, '#FF1744');    // Deep Pink/Red
-                    gradient.addColorStop(0.75, '#FF9100');   // Orange
-                    gradient.addColorStop(1.0, '#FFC400');    // Yellow-Orange
+                    gradient.addColorStop(0.75, '#AA00FF');   // Purple
+                    gradient.addColorStop(1.0, '#2979FF');    // Blue
                     ctx.strokeStyle = gradient;
                     ctx.lineWidth = baseLineWidth; // Original thickness
                     
