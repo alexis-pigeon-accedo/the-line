@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Persistent Randomized Colorful Lines</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: black;
+            overflow: hidden; /* Hide scrollbars */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh; /* Full viewport height */
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="animatedLineCanvas"></canvas>
+
+    <script>
+        // Get canvas and context
+        const canvas = document.getElementById('animatedLineCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Animation parameters
+        const segmentsPerCurve = 75; // Number of segments to approximate each Bezier curve
+        const animationSpeed = 0.5;  // How many segments' worth of progress to add per frame (0.5 for half speed)
+        const totalSegmentsPerLine = segmentsPerCurve * 2;
+
+        let allLines = []; // Array to store all line objects
+        // Each line object: { controlPoints: [...], discretePoints: [...], isFullyDrawn: false, animationProgress: 0 }
+
+        // Canvas dimensions
+        let w, h;
+
+        /**
+         * Generates a random number within a specified range.
+         * @param {number} min - Minimum value.
+         * @param {number} max - Maximum value.
+         * @returns {number} Random number between min and max.
+         */
+        function randomRange(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        /**
+         * Clamps a value between a minimum and maximum.
+         * @param {number} value - The value to clamp.
+         * @param {number} min - The minimum bound.
+         * @param {number} max - The maximum bound.
+         * @returns {number} The clamped value.
+         */
+        function clamp(value, min, max) {
+            return Math.min(Math.max(value, min), max);
+        }
+
+        /**
+         * Calculates a point on a cubic Bezier curve.
+         * @param {number} t - Parameter (0 to 1)
+         * @param {object} p0 - Start point {x, y}
+         * @param {object} p1 - Control point 1 {x, y}
+         * @param {object} p2 - Control point 2 {x, y}
+         * @param {object} p3 - End point {x, y}
+         * @returns {object} Point {x, y} on the curve
+         */
+        function bezierPoint(t, p0, p1, p2, p3) {
+            const cX = 3 * (p1.x - p0.x);
+            const bX = 3 * (p2.x - p1.x) - cX;
+            const aX = p3.x - p0.x - cX - bX;
+
+            const cY = 3 * (p1.y - p0.y);
+            const bY = 3 * (p2.y - p1.y) - cY;
+            const aY = p3.y - p0.y - cY - bY;
+
+            const tSquared = t * t;
+            const tCubed = tSquared * t;
+
+            const resX = (aX * tCubed) + (bX * tSquared) + (cX * t) + p0.x;
+            const resY = (aY * tCubed) + (bY * tSquared) + (cY * t) + p0.y;
+            return { x: resX, y: resY };
+        }
+
+        /**
+         * Generates randomized control points for a two-segment Bezier curve path from left to right.
+         * @returns {Array<object>} Array of 7 control points {x, y}.
+         */
+        function generateRandomizedPathControlPoints() {
+            // P0: Start (left edge)
+            const p0 = { x: 0, y: randomRange(h * 0.2, h * 0.8) };
+            // P6: End (right edge)
+            const p6 = { x: w, y: randomRange(h * 0.2, h * 0.8) };
+            // P3: Mid-point anchor
+            const p3 = { x: randomRange(w * 0.4, w * 0.6), y: randomRange(h * 0.1, h * 0.9) };
+
+            // P1: Control for P0 (pulls right and vertically)
+            const p1 = {
+                x: clamp(p0.x + randomRange(w * 0.1, w * 0.3), 0, w),
+                y: clamp(p0.y + randomRange(-h * 0.3, h * 0.3), 0, h)
+            };
+
+            // P2: Control for P3 (from first curve, pulls from P3 towards P0 general direction - leftish)
+            const p2 = {
+                x: clamp(p3.x - randomRange(w * 0.1, w * 0.3), 0, w),
+                y: clamp(p3.y + randomRange(-h * 0.3, h * 0.3), 0, h)
+            };
+
+            // P4: Control for P3 (from second curve), ensuring C1 continuity (smoothness)
+            const smoothnessFactor = randomRange(0.8, 1.2);
+            const p4 = {
+                x: clamp(p3.x + (p3.x - p2.x) * smoothnessFactor, 0, w),
+                y: clamp(p3.y + (p3.y - p2.y) * smoothnessFactor, 0, h)
+            };
+
+            // P5: Control for P6 (pulls from P6 towards P3 general direction - leftish)
+            const p5 = {
+                x: clamp(p6.x - randomRange(w * 0.1, w * 0.3), 0, w),
+                y: clamp(p6.y + randomRange(-h * 0.3, h * 0.3), 0, h)
+            };
+
+            return [p0, p1, p2, p3, p4, p5, p6];
+        }
+
+        /**
+         * Calculates all discrete points along a Bezier path defined by control points.
+         * @param {Array<object>} controlPointsArray - Array of 7 control points.
+         * @returns {Array<object>} Array of discrete {x, y} points along the path.
+         */
+        function calculateDiscretePathPoints(controlPointsArray) {
+            const discretePoints = [];
+            if (controlPointsArray.length < 7) {
+                console.error("Not enough control points to generate path.");
+                return discretePoints;
+            }
+
+            const [p0, p1, p2, p3, p4, p5, p6] = controlPointsArray;
+
+            discretePoints.push(p0); // Start with the first point
+
+            // Generate points for the first Bezier curve (p0, p1, p2, p3)
+            for (let i = 0; i < segmentsPerCurve; i++) {
+                discretePoints.push(bezierPoint((i + 1) / segmentsPerCurve, p0, p1, p2, p3));
+            }
+            // Generate points for the second Bezier curve (p3, p4, p5, p6)
+            for (let i = 0; i < segmentsPerCurve; i++) {
+                discretePoints.push(bezierPoint((i + 1) / segmentsPerCurve, p3, p4, p5, p6));
+            }
+            return discretePoints;
+        }
+        
+        /**
+         * Sets canvas dimensions based on window size.
+         */
+        function setCanvasSize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            w = canvas.width;
+            h = canvas.height;
+        }
+
+        /**
+         * Generates data for a new line and adds it to the list of lines.
+         */
+        function startNewLine() {
+            const controlPoints = generateRandomizedPathControlPoints();
+            const discretePoints = calculateDiscretePathPoints(controlPoints);
+            if (discretePoints.length > 0) {
+                 allLines.push({
+                    controlPoints: controlPoints,
+                    discretePoints: discretePoints,
+                    isFullyDrawn: false,
+                    animationProgress: 0 // Represents number of segments drawn
+                });
+            } else {
+                console.error("Failed to generate points for a new line.");
+            }
+        }
+
+
+        /**
+         * Draws all lines on the canvas.
+         */
+        function draw() {
+            ctx.clearRect(0, 0, w, h); // Clear canvas
+
+            // Gradient from left (blue-ish) to right (yellow-ish)
+            const gradient = ctx.createLinearGradient(w * 0.05, h / 2, w * 0.95, h / 2);
+            gradient.addColorStop(0.0, '#2979FF');    // Blue
+            gradient.addColorStop(0.25, '#AA00FF');   // Purple
+            gradient.addColorStop(0.5, '#FF1744');    // Deep Pink/Red
+            gradient.addColorStop(0.75, '#FF9100');   // Orange
+            gradient.addColorStop(1.0, '#FFC400');    // Yellow-Orange
+
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = Math.max(6, Math.min(20, Math.min(w, h) * 0.02));
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            allLines.forEach(line => {
+                if (line.discretePoints && line.discretePoints.length > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(line.discretePoints[0].x, line.discretePoints[0].y);
+
+                    // Determine how many segments of this line to draw
+                    // animationProgress is number of segments, discretePoints has totalSegments + 1 points
+                    const segmentsToDraw = Math.floor(line.animationProgress);
+                    
+                    for (let i = 1; i <= segmentsToDraw && i < line.discretePoints.length; i++) {
+                        ctx.lineTo(line.discretePoints[i].x, line.discretePoints[i].y);
+                    }
+                    ctx.stroke();
+                }
+            });
+        }
+
+        /**
+         * Animation loop.
+         */
+        function animate() {
+            if (allLines.length > 0) {
+                const currentLine = allLines[allLines.length - 1]; // The last line is the one currently animating
+
+                if (!currentLine.isFullyDrawn) {
+                    currentLine.animationProgress += animationSpeed;
+
+                    if (currentLine.animationProgress >= totalSegmentsPerLine) {
+                        currentLine.animationProgress = totalSegmentsPerLine; // Cap it
+                        currentLine.isFullyDrawn = true;
+                        startNewLine(); // Start a new line once the current one is complete
+                    }
+                }
+            } else {
+                 // Should not happen if init calls startNewLine, but as a fallback:
+                startNewLine();
+            }
+
+
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        /**
+         * Handles window resize events.
+         */
+        function handleResize() {
+            setCanvasSize();
+            allLines = []; // Clear all existing lines
+            startNewLine(); // Start with a fresh line
+            if (allLines.length > 0 && allLines[0].discretePoints.length > 0) {
+                draw(); // Immediate redraw for responsiveness
+            }
+        }
+
+        /**
+         * Initializes the animation.
+         */
+        function init() {
+            setCanvasSize();
+            startNewLine(); // Start the first line
+            if (allLines.length > 0 && allLines[0].discretePoints.length > 0) {
+                animate();
+            } else {
+                console.error("Initialization failed: Could not start the first line. Check console for errors from point generation.");
+            }
+        }
+
+        // Event listeners
+        window.addEventListener('resize', handleResize);
+
+        // Start
+        init();
+    </script>
+</body>
+</html>
